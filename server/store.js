@@ -20,10 +20,10 @@ function redisStore(url, token) {
       await redis.set(PHASE, phase);
     },
     async list() {
-      const all = (await redis.hgetall(PARTICIPANTS)) || {};
-      return Object.values(all)
-        .map((v) => (typeof v === 'string' ? JSON.parse(v) : v))
-        .sort(byCreation);
+      // Without automatic deserialization, HGETALL returns a flat [field, value, field, value…] array.
+      const raw = (await redis.hgetall(PARTICIPANTS)) || [];
+      const values = Array.isArray(raw) ? raw.filter((_, i) => i % 2 === 1) : Object.values(raw);
+      return values.map((v) => (typeof v === 'string' ? JSON.parse(v) : v)).sort(byCreation);
     },
     async add(p) {
       return (await redis.hsetnx(PARTICIPANTS, p.key, JSON.stringify(p))) === 1;
