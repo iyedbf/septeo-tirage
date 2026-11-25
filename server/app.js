@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'node:crypto';
-import { store } from './store.js';
+import { store, storeKind } from './store.js';
 
 const ADMIN_CODE = process.env.ADMIN_CODE || 'septeo2026';
 const MIN_PARTICIPANTS = 3;
@@ -53,7 +53,12 @@ app.use((req, res, next) => (req.body && typeof req.body === 'object' ? next() :
 
 app.get('/api/state', route(async (_req, res) => {
   const [phase, participants] = await Promise.all([store.getPhase(), store.list()]);
-  res.json({ phase, minParticipants: MIN_PARTICIPANTS, participants: participants.map(publicParticipant) });
+  res.json({
+    phase,
+    storage: storeKind,
+    minParticipants: MIN_PARTICIPANTS,
+    participants: participants.map(publicParticipant),
+  });
 }));
 
 app.post('/api/register', route(async (req, res) => {
