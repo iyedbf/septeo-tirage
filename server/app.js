@@ -57,8 +57,13 @@ app.get('/api/state', route(async (_req, res) => {
     phase,
     storage: storeKind,
     minParticipants: MIN_PARTICIPANTS,
-    participants: participants.map(publicParticipant),
+    count: participants.length,
+    drawnCount: participants.filter((p) => p.drawnAt).length,
   });
+}));
+
+app.get('/api/admin/participants', requireAdmin, route(async (_req, res) => {
+  res.json({ participants: (await store.list()).map(publicParticipant) });
 }));
 
 app.post('/api/register', route(async (req, res) => {

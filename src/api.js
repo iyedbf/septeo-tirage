@@ -27,6 +27,7 @@ export const api = {
   draw: () => request('POST', '/api/draw'),
   admin: {
     verify: (code) => request('POST', '/api/admin/verify', { adminCode: code }),
+    participants: (code) => request('GET', '/api/admin/participants', { adminCode: code }),
     close: (code) => request('POST', '/api/admin/close', { adminCode: code }),
     reopen: (code) => request('POST', '/api/admin/reopen', { adminCode: code }),
     reset: (code) => request('POST', '/api/admin/reset', { adminCode: code }),

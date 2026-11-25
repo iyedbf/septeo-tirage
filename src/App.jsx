@@ -8,7 +8,7 @@ import Countdown from './components/Countdown.jsx';
 import AuthCard from './components/AuthCard.jsx';
 import WaitingCard from './components/WaitingCard.jsx';
 import DrawStage from './components/DrawStage.jsx';
-import ParticipantList from './components/ParticipantList.jsx';
+import StatusCard from './components/StatusCard.jsx';
 import AdminPanel from './components/AdminPanel.jsx';
 
 export default function App() {
@@ -68,7 +68,7 @@ export default function App() {
   };
 
   const phase = state?.phase;
-  const participants = state?.participants ?? [];
+  const count = state?.count ?? 0;
 
   return (
     <>
@@ -90,12 +90,11 @@ export default function App() {
             ) : !me ? (
               <AuthCard phase={phase} onAuth={handleAuth} />
             ) : phase === 'inscription' ? (
-              <WaitingCard me={me} count={participants.length} onLogout={logout} />
+              <WaitingCard me={me} count={count} onLogout={logout} />
             ) : (
               <DrawStage
                 me={me}
                 receiver={receiver}
-                participants={participants}
                 onDrawn={(r) => {
                   setReceiver(r);
                   refresh();
@@ -106,7 +105,7 @@ export default function App() {
           </section>
 
           <aside className="side-col">
-            <ParticipantList participants={participants} phase={phase} meId={me?.id} />
+            <StatusCard count={count} drawnCount={state?.drawnCount ?? 0} phase={phase} me={me} />
           </aside>
         </main>
 
@@ -117,7 +116,7 @@ export default function App() {
       </div>
 
       {showAdmin && (
-        <AdminPanel state={state} onClose={() => setShowAdmin(false)} onChange={refresh} />
+        <AdminPanel phase={phase} onClose={() => setShowAdmin(false)} onChange={refresh} />
       )}
     </>
   );

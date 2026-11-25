@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-export const EVENT_DATE = new Date(import.meta.env.VITE_EVENT_DATE || '2026-12-18T09:00:00+01:00');
+const EVENT_DATE = import.meta.env.VITE_EVENT_DATE ? new Date(import.meta.env.VITE_EVENT_DATE) : null;
 
 const UNITS = [
   { key: 'days', label: 'Jours', ms: 86400000 },
@@ -14,18 +14,40 @@ function split(diff) {
   return UNITS.map((u) => {
     const value = Math.floor(rest / u.ms);
     rest -= value * u.ms;
-    return { ...u, value };
+    return { ...u, value: String(value).padStart(2, '0') };
   });
 }
 
-const dateLabel = EVENT_DATE.toLocaleDateString('fr-FR', {
-  weekday: 'long',
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-});
+function Tiles({ parts, mystery }) {
+  return (
+    <div className={`countdown-tiles ${mystery ? 'is-mystery' : ''}`} role="timer" aria-live="off">
+      {parts.map((p, i) => (
+        <div key={p.key} className={`tile ${i % 2 === 0 ? 'tile-orange' : 'tile-navy'}`}>
+          <span key={p.value} className="tile-value">{p.value}</span>
+          <span className="tile-label">{p.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-export default function Countdown() {
+function AnnouncedSoon() {
+  return (
+    <section className="countdown">
+      <div className="countdown-text">
+        <p className="countdown-tag">Restez connectés 📣</p>
+        <h2>Avant l’échange des cadeaux</h2>
+        <p>
+          La date de l’échange des cadeaux sera <strong>annoncée très bientôt</strong>. En attendant, profite-en pour
+          commencer à chercher LE cadeau idéal 🎁
+        </p>
+      </div>
+      <Tiles parts={UNITS.map((u) => ({ ...u, value: '??' }))} mystery />
+    </section>
+  );
+}
+
+function LiveCountdown() {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -34,8 +56,13 @@ export default function Countdown() {
   }, []);
 
   const diff = EVENT_DATE.getTime() - now;
-  const parts = split(diff);
   const isToday = diff <= 0;
+  const dateLabel = EVENT_DATE.toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 
   return (
     <section className="countdown">
@@ -47,15 +74,11 @@ export default function Countdown() {
           {isToday ? 'Profitez bien de ce moment ensemble !' : 'Il reste juste assez de temps pour trouver LE cadeau.'}
         </p>
       </div>
-
-      <div className="countdown-tiles" role="timer" aria-live="off">
-        {parts.map((p, i) => (
-          <div key={p.key} className={`tile ${i % 2 === 0 ? 'tile-orange' : 'tile-navy'}`}>
-            <span key={p.value} className="tile-value">{String(p.value).padStart(2, '0')}</span>
-            <span className="tile-label">{p.label}</span>
-          </div>
-        ))}
-      </div>
+      <Tiles parts={split(diff)} />
     </section>
   );
+}
+
+export default function Countdown() {
+  return EVENT_DATE && !Number.isNaN(EVENT_DATE.getTime()) ? <LiveCountdown /> : <AnnouncedSoon />;
 }

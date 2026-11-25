@@ -1,16 +1,39 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
 
 const ADMIN_KEY = 'septeo-tirage-admin';
 
-export default function AdminPanel({ state, onClose, onChange }) {
+export default function AdminPanel({ phase, onClose, onChange }) {
   const [code, setCode] = useState(sessionStorage.getItem(ADMIN_KEY) || '');
   const [authed, setAuthed] = useState(Boolean(sessionStorage.getItem(ADMIN_KEY)));
+  const [participants, setParticipants] = useState([]);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
 
-  const participants = state?.participants ?? [];
-  const isOpen = state?.phase === 'inscription';
+  const isOpen = phase === 'inscription';
+  const drawn = participants.filter((p) => p.hasDrawn).length;
+
+  const logoutAdmin = () => {
+    sessionStorage.removeItem(ADMIN_KEY);
+    setAuthed(false);
+    setParticipants([]);
+  };
+
+  const loadParticipants = useCallback(async () => {
+    try {
+      setParticipants((await api.admin.participants(code)).participants);
+    } catch (err) {
+      if (err.status === 401) logoutAdmin();
+      else setError(err.message);
+    }
+  }, [code]);
+
+  useEffect(() => {
+    if (!authed) return undefined;
+    loadParticipants();
+    const id = setInterval(loadParticipants, 10000);
+    return () => clearInterval(id);
+  }, [authed, loadParticipants]);
 
   const run = async (fn, success, confirmText) => {
     if (confirmText && !window.confirm(confirmText)) return;
@@ -20,12 +43,10 @@ export default function AdminPanel({ state, onClose, onChange }) {
       await fn();
       setInfo(success);
       onChange();
+      loadParticipants();
     } catch (err) {
       setError(err.message);
-      if (err.status === 401) {
-        sessionStorage.removeItem(ADMIN_KEY);
-        setAuthed(false);
-      }
+      if (err.status === 401) logoutAdmin();
     }
   };
 
@@ -61,7 +82,7 @@ export default function AdminPanel({ state, onClose, onChange }) {
             <p className="muted">
               {isOpen
                 ? `${participants.length} inscrit(s). Quand tout le monde est inscrit, valide la liste pour lancer le tirage.`
-                : 'Le tirage est ouvert. Chaque collaborateur peut découvrir son binôme en se connectant.'}
+                : `Le tirage est ouvert : ${drawn} / ${participants.length} collaborateurs ont découvert leur binôme.`}
             </p>
 
             <div className="admin-actions">
@@ -100,24 +121,31 @@ export default function AdminPanel({ state, onClose, onChange }) {
             {info && <div className="banner banner-ok">{info}</div>}
             {error && <div className="banner banner-error">{error}</div>}
 
-            <ul className="admin-list">
-              {participants.map((p) => (
-                <li key={p.id}>
-                  <span>{p.firstName} {p.lastName}</span>
-                  {isOpen ? (
-                    <button
-                      className="link danger"
-                      onClick={() => run(() => api.admin.remove(code, p.id), `${p.firstName} a été retiré(e).`,
-                        `Retirer ${p.firstName} ${p.lastName} de la liste ?`)}
-                    >
-                      Retirer
-                    </button>
-                  ) : (
-                    <span className="small muted">{p.hasDrawn ? 'Tirage fait 🎁' : 'En attente ⏳'}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <h3 className="admin-list-title">Liste des inscrits ({participants.length})</h3>
+            {participants.length === 0 ? (
+              <p className="muted small">Aucun inscrit pour le moment.</p>
+            ) : (
+              <ul className="admin-list">
+                {participants.map((p) => (
+                  <li key={p.id}>
+                    <span>{p.firstName} {p.lastName}</span>
+                    {isOpen ? (
+                      <button
+                        className="link danger"
+                        onClick={() => run(() => api.admin.remove(code, p.id), `${p.firstName} a été retiré(e).`,
+                          `Retirer ${p.firstName} ${p.lastName} de la liste ?`)}
+                      >
+                        Retirer
+                      </button>
+                    ) : (
+                      <span className="small muted">{p.hasDrawn ? 'Tirage fait 🎁' : 'En attente ⏳'}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <button className="link admin-logout" onClick={logoutAdmin}>Se déconnecter de l’espace organisateur</button>
           </>
         )}
       </div>

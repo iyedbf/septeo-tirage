@@ -3,8 +3,14 @@ import { api } from '../api.js';
 import Confetti from './Confetti.jsx';
 
 const ROLL_MS = 2600;
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-export default function DrawStage({ me, receiver, participants, onDrawn, onLogout }) {
+const scramble = () => {
+  const word = (n) => Array.from({ length: n }, () => LETTERS[Math.floor(Math.random() * LETTERS.length)]).join('');
+  return `${word(4 + Math.floor(Math.random() * 3))} ${word(5 + Math.floor(Math.random() * 3))}`;
+};
+
+export default function DrawStage({ me, receiver, onDrawn, onLogout }) {
   const [stage, setStage] = useState(receiver ? 'revealed' : 'idle');
   const [rolling, setRolling] = useState('');
   const [error, setError] = useState('');
@@ -20,15 +26,10 @@ export default function DrawStage({ me, receiver, participants, onDrawn, onLogou
 
   useEffect(() => () => clearInterval(timer.current), []);
 
-  const names = participants.filter((p) => p.id !== me.id).map((p) => `${p.firstName} ${p.lastName}`);
-
   const draw = async () => {
     setError('');
     setStage('rolling');
-    let i = 0;
-    timer.current = setInterval(() => {
-      setRolling(names.length ? names[i++ % names.length] : '…');
-    }, 90);
+    timer.current = setInterval(() => setRolling(scramble()), 80);
     try {
       const [data] = await Promise.all([api.draw(), new Promise((r) => setTimeout(r, ROLL_MS))]);
       clearInterval(timer.current);
