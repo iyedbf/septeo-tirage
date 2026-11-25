@@ -4,6 +4,7 @@ import Snow from './components/Snow.jsx';
 import Garland from './components/Garland.jsx';
 import Header from './components/Header.jsx';
 import Steps from './components/Steps.jsx';
+import Countdown from './components/Countdown.jsx';
 import AuthCard from './components/AuthCard.jsx';
 import WaitingCard from './components/WaitingCard.jsx';
 import DrawStage from './components/DrawStage.jsx';
@@ -75,6 +76,8 @@ export default function App() {
       <Garland />
       <div className="app">
         <Header />
+
+        <Countdown />
 
         {offline && <div className="banner banner-error">Connexion au serveur impossible… nouvelle tentative en cours.</div>}
 
