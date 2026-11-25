@@ -41,8 +41,17 @@ export default function App() {
 
   useEffect(() => {
     refresh();
-    const id = setInterval(refresh, 4000);
-    return () => clearInterval(id);
+    const id = setInterval(() => {
+      if (!document.hidden) refresh();
+    }, 10000);
+    const onVisible = () => {
+      if (!document.hidden) refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [refresh]);
 
   const handleAuth = ({ token, me: participant }) => {
