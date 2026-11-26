@@ -3,47 +3,89 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Redis } from '@upstash/redis';
 
+export const GENERAL = 'general';
+
 const byCreation = (a, b) => a.createdAt.localeCompare(b.createdAt);
 
 // Participants are stored one per field, keyed by their normalized name, so that
 // concurrent registrations never overwrite each other and duplicates are rejected atomically.
+// A global name index ensures a collaborator belongs to a single draw (general or one team).
 function redisStore(url, token) {
   const redis = new Redis({ url, token, automaticDeserialization: false });
-  const PHASE = 'tirage:phase';
-  const PARTICIPANTS = 'tirage:participants';
+  const GROUPS = 'tirage:groups';
+  const NAMES = 'tirage:names';
+
+  // Without automatic deserialization, HGETALL returns a flat [field, value, field, value…] array.
+  const hvalues = (raw) => {
+    if (!raw) return [];
+    const values = Array.isArray(raw) ? raw.filter((_, i) => i % 2 === 1) : Object.values(raw);
+    return values.map((v) => (typeof v === 'string' ? JSON.parse(v) : v));
+  };
+
+  const scope = (prefix) => {
+    const PHASE = `${prefix}:phase`;
+    const PARTICIPANTS = `${prefix}:participants`;
+    return {
+      async getPhase() {
+        return (await redis.get(PHASE)) || 'inscription';
+      },
+      async setPhase(phase) {
+        await redis.set(PHASE, phase);
+      },
+      async list() {
+        return hvalues(await redis.hgetall(PARTICIPANTS)).sort(byCreation);
+      },
+      async add(p) {
+        return (await redis.hsetnx(PARTICIPANTS, p.key, JSON.stringify(p))) === 1;
+      },
+      async update(p) {
+        await redis.hset(PARTICIPANTS, { [p.key]: JSON.stringify(p) });
+      },
+      async remove(p) {
+        await redis.hdel(PARTICIPANTS, p.key);
+      },
+      async replaceAll(participants) {
+        const tx = redis.multi();
+        tx.del(PARTICIPANTS);
+        if (participants.length) {
+          tx.hset(PARTICIPANTS, Object.fromEntries(participants.map((p) => [p.key, JSON.stringify(p)])));
+        }
+        await tx.exec();
+      },
+      async reset() {
+        await redis.del(PHASE, PARTICIPANTS);
+      },
+    };
+  };
 
   return {
-    async getPhase() {
-      return (await redis.get(PHASE)) || 'inscription';
+    group: (slug) => scope(slug === GENERAL ? 'tirage' : `tirage:g:${slug}`),
+    groups: {
+      async list() {
+        return hvalues(await redis.hgetall(GROUPS)).sort(byCreation);
+      },
+      async get(slug) {
+        const raw = await redis.hget(GROUPS, slug);
+        return raw ? JSON.parse(raw) : null;
+      },
+      async add(g) {
+        return (await redis.hsetnx(GROUPS, g.slug, JSON.stringify(g))) === 1;
+      },
+      async remove(slug) {
+        await redis.hdel(GROUPS, slug);
+      },
     },
-    async setPhase(phase) {
-      await redis.set(PHASE, phase);
-    },
-    async list() {
-      // Without automatic deserialization, HGETALL returns a flat [field, value, field, value…] array.
-      const raw = (await redis.hgetall(PARTICIPANTS)) || [];
-      const values = Array.isArray(raw) ? raw.filter((_, i) => i % 2 === 1) : Object.values(raw);
-      return values.map((v) => (typeof v === 'string' ? JSON.parse(v) : v)).sort(byCreation);
-    },
-    async add(p) {
-      return (await redis.hsetnx(PARTICIPANTS, p.key, JSON.stringify(p))) === 1;
-    },
-    async update(p) {
-      await redis.hset(PARTICIPANTS, { [p.key]: JSON.stringify(p) });
-    },
-    async remove(p) {
-      await redis.hdel(PARTICIPANTS, p.key);
-    },
-    async replaceAll(participants) {
-      const tx = redis.multi();
-      tx.del(PARTICIPANTS);
-      if (participants.length) {
-        tx.hset(PARTICIPANTS, Object.fromEntries(participants.map((p) => [p.key, JSON.stringify(p)])));
-      }
-      await tx.exec();
-    },
-    async reset() {
-      await redis.del(PHASE, PARTICIPANTS);
+    names: {
+      async get(key) {
+        return (await redis.hget(NAMES, key)) || null;
+      },
+      async claim(key, slug) {
+        if ((await redis.hsetnx(NAMES, key, slug)) === 1) return true;
+        return (await redis.hget(NAMES, key)) === slug;
+      },
+      async release(keys) {
+        if (keys.length) await redis.hdel(NAMES, ...keys);
+      },
     },
   };
 }
@@ -54,45 +96,101 @@ function fileStore() {
   try {
     db = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch {
-    db = { phase: 'inscription', participants: [] };
+    db = {};
   }
+  db.phase ??= 'inscription';
+  db.participants ??= [];
+  db.groups ??= {};
+  db.teams ??= {};
+  db.names ??= {};
+
   const save = () => {
     fs.writeFileSync(`${file}.tmp`, JSON.stringify(db, null, 2));
     fs.renameSync(`${file}.tmp`, file);
   };
 
-  return {
+  const bucket = (slug) => {
+    if (slug === GENERAL) return db;
+    db.teams[slug] ??= { phase: 'inscription', participants: [] };
+    return db.teams[slug];
+  };
+
+  const scope = (slug) => ({
     async getPhase() {
-      return db.phase;
+      return bucket(slug).phase;
     },
     async setPhase(phase) {
-      db.phase = phase;
+      bucket(slug).phase = phase;
       save();
     },
     async list() {
-      return db.participants.map((p) => ({ ...p })).sort(byCreation);
+      return bucket(slug).participants.map((p) => ({ ...p })).sort(byCreation);
     },
     async add(p) {
-      if (db.participants.some((x) => x.key === p.key)) return false;
-      db.participants.push(p);
+      const b = bucket(slug);
+      if (b.participants.some((x) => x.key === p.key)) return false;
+      b.participants.push(p);
       save();
       return true;
     },
     async update(p) {
-      db.participants = db.participants.map((x) => (x.key === p.key ? p : x));
+      const b = bucket(slug);
+      b.participants = b.participants.map((x) => (x.key === p.key ? p : x));
       save();
     },
     async remove(p) {
-      db.participants = db.participants.filter((x) => x.key !== p.key);
+      const b = bucket(slug);
+      b.participants = b.participants.filter((x) => x.key !== p.key);
       save();
     },
     async replaceAll(participants) {
-      db.participants = participants;
+      bucket(slug).participants = participants;
       save();
     },
     async reset() {
-      db = { phase: 'inscription', participants: [] };
+      if (slug === GENERAL) {
+        db.phase = 'inscription';
+        db.participants = [];
+      } else {
+        delete db.teams[slug];
+      }
       save();
+    },
+  });
+
+  return {
+    group: scope,
+    groups: {
+      async list() {
+        return Object.values(db.groups).sort(byCreation);
+      },
+      async get(slug) {
+        return db.groups[slug] || null;
+      },
+      async add(g) {
+        if (db.groups[g.slug]) return false;
+        db.groups[g.slug] = g;
+        save();
+        return true;
+      },
+      async remove(slug) {
+        delete db.groups[slug];
+        save();
+      },
+    },
+    names: {
+      async get(key) {
+        return db.names[key] || null;
+      },
+      async claim(key, slug) {
+        db.names[key] ??= slug;
+        save();
+        return db.names[key] === slug;
+      },
+      async release(keys) {
+        keys.forEach((k) => delete db.names[k]);
+        save();
+      },
     },
   };
 }

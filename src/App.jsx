@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, clearToken, getToken, setToken } from './api.js';
+import { api, clearToken, getToken, IS_TEAM, setToken } from './api.js';
 import Snow from './components/Snow.jsx';
 import Garland from './components/Garland.jsx';
 import Header from './components/Header.jsx';
@@ -17,6 +17,7 @@ export default function App() {
   const [receiver, setReceiver] = useState(null);
   const [showAdmin, setShowAdmin] = useState(false);
   const [offline, setOffline] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -35,8 +36,9 @@ export default function App() {
           }
         }
       }
-    } catch {
-      setOffline(true);
+    } catch (e) {
+      if (e.status === 404) setNotFound(true);
+      else setOffline(true);
     }
   }, []);
 
@@ -75,39 +77,50 @@ export default function App() {
       <Snow />
       <Garland />
       <div className="app">
-        <Header />
+        <Header teamName={IS_TEAM ? state?.group?.name : null} />
 
-        <Countdown />
+        {notFound ? (
+          <div className="card not-found">
+            <div className="big-emoji">🧭</div>
+            <h2>Ce lien de tirage n’existe pas</h2>
+            <p className="muted">Il a peut-être été supprimé ou mal copié. Vérifie le lien reçu de ton manager.</p>
+            <a className="btn btn-primary" href="/">Aller au tirage général</a>
+          </div>
+        ) : (
+          <>
+            <Countdown />
 
-        {offline && <div className="banner banner-error">Connexion au serveur impossible… nouvelle tentative en cours.</div>}
+            {offline && <div className="banner banner-error">Connexion au serveur impossible… nouvelle tentative en cours.</div>}
 
-        <Steps phase={phase} me={me} hasDrawn={Boolean(receiver)} />
+            <Steps phase={phase} me={me} hasDrawn={Boolean(receiver)} />
 
-        <main className="layout">
-          <section className="main-col">
-            {!state ? (
-              <div className="card center"><div className="spinner" /></div>
-            ) : !me ? (
-              <AuthCard phase={phase} onAuth={handleAuth} />
-            ) : phase === 'inscription' ? (
-              <WaitingCard me={me} count={count} onLogout={logout} />
-            ) : (
-              <DrawStage
-                me={me}
-                receiver={receiver}
-                onDrawn={(r) => {
-                  setReceiver(r);
-                  refresh();
-                }}
-                onLogout={logout}
-              />
-            )}
-          </section>
+            <main className="layout">
+              <section className="main-col">
+                {!state ? (
+                  <div className="card center"><div className="spinner" /></div>
+                ) : !me ? (
+                  <AuthCard phase={phase} onAuth={handleAuth} />
+                ) : phase === 'inscription' ? (
+                  <WaitingCard me={me} count={count} onLogout={logout} />
+                ) : (
+                  <DrawStage
+                    me={me}
+                    receiver={receiver}
+                    onDrawn={(r) => {
+                      setReceiver(r);
+                      refresh();
+                    }}
+                    onLogout={logout}
+                  />
+                )}
+              </section>
 
-          <aside className="side-col">
-            <StatusCard count={count} drawnCount={state?.drawnCount ?? 0} phase={phase} me={me} />
-          </aside>
-        </main>
+              <aside className="side-col">
+                <StatusCard count={count} drawnCount={state?.drawnCount ?? 0} phase={phase} me={me} />
+              </aside>
+            </main>
+          </>
+        )}
 
         <footer className="footer">
           <span>© {new Date().getFullYear()} Septeo Tunisia · Joyeuses fêtes à toutes et à tous ✨</span>
@@ -116,7 +129,7 @@ export default function App() {
       </div>
 
       {showAdmin && (
-        <AdminPanel phase={phase} onClose={() => setShowAdmin(false)} onChange={refresh} />
+        <AdminPanel phase={phase} groupName={state?.group?.name} onClose={() => setShowAdmin(false)} onChange={refresh} />
       )}
     </>
   );

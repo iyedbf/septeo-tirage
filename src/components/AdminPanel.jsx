@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../api.js';
+import { ADMIN_KEY, api, IS_TEAM } from '../api.js';
+import GroupsManager from './GroupsManager.jsx';
 
-const ADMIN_KEY = 'septeo-tirage-admin';
-
-export default function AdminPanel({ phase, onClose, onChange }) {
+export default function AdminPanel({ phase, groupName, onClose, onChange }) {
   const [code, setCode] = useState(sessionStorage.getItem(ADMIN_KEY) || '');
   const [authed, setAuthed] = useState(Boolean(sessionStorage.getItem(ADMIN_KEY)));
+  const [role, setRole] = useState(sessionStorage.getItem(`${ADMIN_KEY}:role`) || '');
   const [participants, setParticipants] = useState([]);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -15,7 +15,9 @@ export default function AdminPanel({ phase, onClose, onChange }) {
 
   const logoutAdmin = () => {
     sessionStorage.removeItem(ADMIN_KEY);
+    sessionStorage.removeItem(`${ADMIN_KEY}:role`);
     setAuthed(false);
+    setRole('');
     setParticipants([]);
   };
 
@@ -54,8 +56,10 @@ export default function AdminPanel({ phase, onClose, onChange }) {
     e.preventDefault();
     setError('');
     try {
-      await api.admin.verify(code);
+      const res = await api.admin.verify(code);
       sessionStorage.setItem(ADMIN_KEY, code);
+      sessionStorage.setItem(`${ADMIN_KEY}:role`, res.role);
+      setRole(res.role);
       setAuthed(true);
     } catch (err) {
       setError(err.message);
@@ -67,11 +71,12 @@ export default function AdminPanel({ phase, onClose, onChange }) {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose} aria-label="Fermer">×</button>
         <h2>Espace organisateur</h2>
+        {IS_TEAM && groupName && <p className="team-badge team-badge-light">👥 Équipe {groupName}</p>}
 
         {!authed ? (
           <form onSubmit={login} className="form">
             <label>
-              <span>Code organisateur</span>
+              <span>{IS_TEAM ? 'Code manager de l’équipe' : 'Code organisateur'}</span>
               <input type="password" value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
             </label>
             {error && <div className="banner banner-error">{error}</div>}
@@ -144,6 +149,8 @@ export default function AdminPanel({ phase, onClose, onChange }) {
                 ))}
               </ul>
             )}
+
+            {!IS_TEAM && role === 'super' && <GroupsManager code={code} />}
 
             <button className="link admin-logout" onClick={logoutAdmin}>Se déconnecter de l’espace organisateur</button>
           </>
